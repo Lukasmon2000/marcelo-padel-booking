@@ -1,0 +1,1 @@
+ALTER TABLE public.profiles ADD COLUMN is_minor boolean NOT NULL DEFAULT false;

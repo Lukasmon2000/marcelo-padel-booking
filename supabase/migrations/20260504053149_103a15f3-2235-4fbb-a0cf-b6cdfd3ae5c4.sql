@@ -1,0 +1,2 @@
+ALTER TABLE public.recurring_bookings ADD CONSTRAINT recurring_bookings_class_slot_id_fkey FOREIGN KEY (class_slot_id) REFERENCES public.class_slots(id) ON DELETE CASCADE;
+ALTER TABLE public.recurring_bookings ADD CONSTRAINT recurring_bookings_user_id_unique UNIQUE (user_id, class_slot_id);

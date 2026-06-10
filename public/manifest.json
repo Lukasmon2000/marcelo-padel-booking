@@ -1,0 +1,24 @@
+{
+  "name": "Escuela de Pádel Marcelo Fernández",
+  "short_name": "Pádel MF",
+  "description": "Reserva tus clases de pádel",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7f5",
+  "theme_color": "#1a7a5c",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/logo-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

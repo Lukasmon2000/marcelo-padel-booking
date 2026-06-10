@@ -1,0 +1,1 @@
+ALTER TYPE public.player_level ADD VALUE IF NOT EXISTS 'iniciacion' BEFORE 'principiante';

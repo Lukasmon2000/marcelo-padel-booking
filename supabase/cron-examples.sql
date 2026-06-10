@@ -1,0 +1,40 @@
+-- Ejemplo orientativo para programar los correos desde Supabase SQL.
+-- No lo ejecutes tal cual sin sustituir PROJECT_REF y TU_CRON_SECRET.
+-- Si prefieres, también puedes crear estos cron desde el panel de Supabase.
+
+-- Requiere extensiones pg_cron y pg_net habilitadas.
+-- create extension if not exists pg_cron with schema extensions;
+-- create extension if not exists pg_net with schema extensions;
+
+-- Recordatorios 4 horas antes, cada 15 minutos.
+-- select cron.schedule(
+--   'send-4h-booking-reminders',
+--   '*/15 * * * *',
+--   $$
+--   select net.http_post(
+--     url := 'https://PROJECT_REF.supabase.co/functions/v1/send-reminders',
+--     headers := jsonb_build_object(
+--       'Content-Type', 'application/json',
+--       'x-cron-secret', 'TU_CRON_SECRET'
+--     ),
+--     body := '{}'::jsonb
+--   );
+--   $$
+-- );
+
+-- Resumen diario a las 08:00.
+-- Ojo: pg_cron suele trabajar en UTC. Ajusta la hora si tu proyecto usa UTC.
+-- select cron.schedule(
+--   'send-daily-booking-summary',
+--   '0 6 * * *',
+--   $$
+--   select net.http_post(
+--     url := 'https://PROJECT_REF.supabase.co/functions/v1/send-daily-summary',
+--     headers := jsonb_build_object(
+--       'Content-Type', 'application/json',
+--       'x-cron-secret', 'TU_CRON_SECRET'
+--     ),
+--     body := '{}'::jsonb
+--   );
+--   $$
+-- );
