@@ -8,6 +8,8 @@ Este proyecto ya viene corregido para trabajar con:
 - Email de confirmación al reservar
 - Email de cancelación al cancelar
 - Email opcional por la mañana para las clases del día
+- Email semanal a todos los usuarios los lunes a las 09:00
+- Aviso a usuarios del mismo nivel cuando se reserva una clase grupal con plazas
 
 ## 1. Instalar dependencias
 
@@ -37,6 +39,7 @@ supabase secrets set BREVO_SENDER_NAME="Marcelo Pádel"
 supabase secrets set ADMIN_EMAIL="correo_admin@tudominio.com"
 supabase secrets set CRON_SECRET="un_texto_largo_aleatorio"
 supabase secrets set SUPABASE_SERVICE_ROLE_KEY="tu_service_role_key"
+supabase secrets set PUBLIC_SITE_URL="https://tu-dominio.com"
 ```
 
 La `SUPABASE_SERVICE_ROLE_KEY` solo debe estar en Supabase Secrets. Nunca debe estar en React/Vite.
@@ -51,6 +54,7 @@ La migración añadida es:
 
 ```txt
 supabase/migrations/20260610000000_email_automation_fields.sql
+supabase/migrations/20260610001000_weekly_promo_emails.sql
 ```
 
 Añade campos de control para evitar duplicados:
@@ -60,6 +64,14 @@ Añade campos de control para evitar duplicados:
 - `reminder_4h_sent_at`
 - `daily_summary_sent_at`
 - campos `*_error` para registrar fallos
+- `group_level_notification_sent_at`
+- `group_level_notification_error`
+
+La segunda migración añade:
+
+- Preferencia de emails semanales en `profiles`
+- Token de baja por usuario
+- Tabla `weekly_promo_email_logs` para evitar duplicados semanales
 
 También añade una policy para que el administrador pueda cancelar reservas con `UPDATE status='cancelled'` en vez de borrarlas.
 
@@ -70,6 +82,7 @@ supabase functions deploy notify-booking
 supabase functions deploy notify-cancellation
 supabase functions deploy send-reminders --no-verify-jwt
 supabase functions deploy send-daily-summary --no-verify-jwt
+supabase functions deploy send-weekly-promo --no-verify-jwt
 ```
 
 ## 6. Programar cron
@@ -94,6 +107,22 @@ Ejecuta `send-daily-summary` una vez al día, por ejemplo a las 08:00 de España
 0 8 * * *
 ```
 
+### Email semanal de los lunes a las 09:00
+
+Ejecuta `send-weekly-promo` cada hora los lunes:
+
+```txt
+0 * * * 1
+```
+
+La función comprueba la hora de Madrid y solo envía cuando son las 09:00. Esto evita desfases por horario de verano/invierno. También registra cada usuario y semana en `weekly_promo_email_logs`, por lo que no duplica envíos.
+
+Para una prueba manual puedes llamar la función con:
+
+```json
+{ "force": true }
+```
+
 ## 7. Endpoints de funciones
 
 Sustituye `PROJECT_REF` por tu referencia real de Supabase:
@@ -101,6 +130,7 @@ Sustituye `PROJECT_REF` por tu referencia real de Supabase:
 ```txt
 https://PROJECT_REF.supabase.co/functions/v1/send-reminders
 https://PROJECT_REF.supabase.co/functions/v1/send-daily-summary
+https://PROJECT_REF.supabase.co/functions/v1/send-weekly-promo
 ```
 
 Las funciones cron están protegidas con `CRON_SECRET`, no con sesión de usuario. Cuando las llames desde cron, añade el header:
@@ -118,6 +148,8 @@ x-cron-secret: TU_CRON_SECRET
 - `supabase-helpers.ts`: la reserva mínima para el mismo día pasa de 2h reales a 4h reales.
 - `send-reminders`: ahora envía el aviso 4 horas antes, no simplemente “mañana”.
 - `send-daily-summary`: función opcional para mandar recordatorio por la mañana.
+- `send-weekly-promo`: manda el email semanal de lunes 09:00 a usuarios activos no dados de baja.
+- `notify-booking`: si la reserva es grupal y quedan plazas, avisa a usuarios del mismo nivel.
 - `.gitignore`: ahora ignora `.env` y `.env.*`.
 
 ## 9. Limitación importante

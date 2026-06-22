@@ -8,18 +8,33 @@ const corsHeaders = {
 };
 
 const DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+const GROUP_CLASS_CAP: Record<string, number> = {
+  group_2: 2,
+  group_4: 4,
+};
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
+    .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
 
 function formatTime(value: string | null | undefined): string {
   return String(value || "").slice(0, 5);
+}
+
+function isGroupClass(classType: string | null | undefined): boolean {
+  return classType === "group_2" || classType === "group_4";
+}
+
+function classTypeLabel(classType: string | null | undefined): string {
+  if (classType === "group_2") return "Grupal 2 personas";
+  if (classType === "group_4") return "Grupal 4 personas";
+  if (classType === "private") return "Clase particular";
+  return "Clase grupal";
 }
 
 function levelLabel(level: string | null | undefined): string {
@@ -139,7 +154,7 @@ serve(async (req) => {
 
     const { data: booking, error: bookingError } = await admin
       .from("bookings")
-      .select("id, user_id, class_slot_id, booking_date, level, class_type, monitor, status, confirmation_email_sent_at")
+      .select("id, user_id, class_slot_id, booking_date, level, class_type, monitor, status, confirmation_email_sent_at, group_level_notification_sent_at")
       .eq("id", bookingId)
       .single();
 
@@ -168,7 +183,10 @@ serve(async (req) => {
       });
     }
 
-    if (booking.confirmation_email_sent_at) {
+    const confirmationAlreadySent = Boolean(booking.confirmation_email_sent_at);
+    const groupLevelNotificationAlreadySent = Boolean(booking.group_level_notification_sent_at);
+
+    if (confirmationAlreadySent && (!isGroupClass(booking.class_type) || groupLevelNotificationAlreadySent)) {
       return new Response(JSON.stringify({ success: true, alreadySent: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -176,7 +194,7 @@ serve(async (req) => {
 
     const [{ data: profile }, { data: slot }, { data: userData }] = await Promise.all([
       admin.from("profiles").select("full_name, level").eq("user_id", booking.user_id).maybeSingle(),
-      admin.from("class_slots").select("day_of_week, start_time, end_time, court_name").eq("id", booking.class_slot_id).maybeSingle(),
+      admin.from("class_slots").select("day_of_week, start_time, end_time, court_name, max_players").eq("id", booking.class_slot_id).maybeSingle(),
       admin.auth.admin.getUserById(booking.user_id),
     ]);
 
@@ -184,8 +202,10 @@ serve(async (req) => {
     if (!userEmail) throw new Error("Usuario sin email");
     if (!slot) throw new Error("Clase no encontrada");
 
-    const userName = escapeHtml(profile?.full_name || "Alumno");
-    const userLevel = escapeHtml(levelLabel(booking.level || profile?.level));
+    const plainUserName = profile?.full_name || "Alumno";
+    const rawLevel = booking.level || profile?.level;
+    const userName = escapeHtml(plainUserName);
+    const userLevel = escapeHtml(levelLabel(rawLevel));
     const date = escapeHtml(booking.booking_date);
     const dayName = escapeHtml(DAY_NAMES[slot.day_of_week] || "");
     const startTime = escapeHtml(formatTime(slot.start_time));
@@ -193,7 +213,8 @@ serve(async (req) => {
     const courtName = escapeHtml(slot.court_name || "Pista no indicada");
     const monitor = escapeHtml(booking.monitor || "Monitor no indicado");
 
-    try {
+    if (!confirmationAlreadySent) {
+      try {
       await sendBrevoEmail({
         to: adminEmail,
         subject: `Nueva reserva - ${userName}`,
@@ -235,15 +256,173 @@ serve(async (req) => {
         .from("bookings")
         .update({ confirmation_email_sent_at: new Date().toISOString(), confirmation_email_error: null })
         .eq("id", bookingId);
-    } catch (emailError) {
-      await admin
-        .from("bookings")
-        .update({ confirmation_email_error: emailError instanceof Error ? emailError.message : "Error desconocido" })
-        .eq("id", bookingId);
-      throw emailError;
+      } catch (emailError) {
+        await admin
+          .from("bookings")
+          .update({ confirmation_email_error: emailError instanceof Error ? emailError.message : "Error desconocido" })
+          .eq("id", bookingId);
+        throw emailError;
+      }
     }
 
-    return new Response(JSON.stringify({ success: true, confirmationSent: true }), {
+    let groupLevelNotificationsSent = 0;
+    let groupLevelNotificationsFailed = 0;
+    let groupLevelNotificationsSkipped: string | null = null;
+
+    if (isGroupClass(booking.class_type) && !groupLevelNotificationAlreadySent) {
+      try {
+        if (!rawLevel) {
+          groupLevelNotificationsSkipped = "missing_level";
+        } else {
+          const { count: confirmedCount, error: countError } = await admin
+            .from("bookings")
+            .select("id", { count: "exact", head: true })
+            .eq("class_slot_id", booking.class_slot_id)
+            .eq("booking_date", booking.booking_date)
+            .eq("status", "confirmed");
+
+          if (countError) throw countError;
+
+          const capacity = GROUP_CLASS_CAP[booking.class_type] ?? slot.max_players ?? 4;
+          const remainingSpots = Math.max(capacity - (confirmedCount || 0), 0);
+
+          if (remainingSpots <= 0) {
+            groupLevelNotificationsSkipped = "class_full";
+          } else {
+            const [{ data: alreadyBookedRows, error: alreadyBookedError }, { data: sameLevelProfiles, error: profilesError }] =
+              await Promise.all([
+                admin
+                  .from("bookings")
+                  .select("user_id")
+                  .eq("class_slot_id", booking.class_slot_id)
+                  .eq("booking_date", booking.booking_date)
+                  .eq("status", "confirmed"),
+                admin
+                  .from("profiles")
+                  .select("user_id, full_name")
+                  .eq("level", rawLevel)
+                  .eq("marketing_emails_enabled", true)
+                  .is("marketing_emails_unsubscribed_at", null)
+                  .neq("user_id", booking.user_id),
+              ]);
+
+            if (alreadyBookedError) throw alreadyBookedError;
+            if (profilesError) throw profilesError;
+
+            const alreadyBookedUserIds = new Set((alreadyBookedRows || []).map((row) => row.user_id));
+            const recipients = (sameLevelProfiles || []).filter((profile) => !alreadyBookedUserIds.has(profile.user_id));
+
+            if (recipients.length === 0) {
+              groupLevelNotificationsSkipped = "no_recipients";
+            } else {
+              const appUrl = Deno.env.get("PUBLIC_SITE_URL") || "https://marcelopadel.com";
+              const safeAppUrl = escapeHtml(appUrl);
+              const safeClassType = escapeHtml(classTypeLabel(booking.class_type));
+              const remainingLabel = remainingSpots === 1 ? "1 plaza" : `${remainingSpots} plazas`;
+              const plainLevel = levelLabel(rawLevel);
+              const plainClassType = classTypeLabel(booking.class_type);
+              const failed: Array<{ userId: string; reason: string }> = [];
+
+              for (const peerProfile of recipients) {
+                try {
+                  const { data: peerUserData, error: peerUserError } =
+                    await admin.auth.admin.getUserById(peerProfile.user_id);
+
+                  if (peerUserError || !peerUserData?.user?.email) {
+                    throw new Error(peerUserError?.message || "Usuario sin email");
+                  }
+
+                  const peerName = peerProfile.full_name || "Alumno";
+                  const safePeerName = escapeHtml(peerName);
+
+                  await sendBrevoEmail({
+                    to: peerUserData.user.email,
+                    subject: `Clase grupal de ${plainLevel} con plazas disponibles`,
+                    htmlContent: `
+                      <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111827;">
+                        <h2 style="margin-bottom: 16px;">Clase grupal de tu nivel</h2>
+                        <p>Hola ${safePeerName},</p>
+                        <p>${userName} ha reservado una clase grupal de nivel ${userLevel} y todavia quedan plazas disponibles.</p>
+                        <p><strong>Tipo:</strong> ${safeClassType}</p>
+                        <p><strong>Dia:</strong> ${dayName} ${date}</p>
+                        <p><strong>Hora:</strong> ${startTime}${endTime ? ` - ${endTime}` : ""}</p>
+                        <p><strong>Pista:</strong> ${courtName}</p>
+                        <p><strong>Monitor:</strong> ${monitor}</p>
+                        <p><strong>Plazas libres:</strong> ${escapeHtml(remainingLabel)}</p>
+                        <p>
+                          <a href="${safeAppUrl}" style="background: #059669; color: white; padding: 10px 16px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+                            Reservar mi plaza
+                          </a>
+                        </p>
+                      </div>
+                    `,
+                    textContent: `Clase grupal de tu nivel\nHola ${peerName}\n${plainUserName} ha reservado una clase grupal de nivel ${plainLevel} y todavia quedan plazas disponibles.\nTipo: ${plainClassType}\nDia: ${DAY_NAMES[slot.day_of_week] || ""} ${booking.booking_date}\nHora: ${formatTime(slot.start_time)}${formatTime(slot.end_time) ? ` - ${formatTime(slot.end_time)}` : ""}\nPista: ${slot.court_name || "Pista no indicada"}\nMonitor: ${booking.monitor || "Monitor no indicado"}\nPlazas libres: ${remainingLabel}\nReservar: ${appUrl}`,
+                  });
+
+                  groupLevelNotificationsSent++;
+                } catch (peerError) {
+                  groupLevelNotificationsFailed++;
+                  failed.push({
+                    userId: peerProfile.user_id,
+                    reason: peerError instanceof Error ? peerError.message : "Error desconocido",
+                  });
+                }
+              }
+
+              if (failed.length > 0) {
+                const failedPreview = failed
+                  .slice(0, 5)
+                  .map((item) => `${item.userId}: ${item.reason}`)
+                  .join("; ");
+                await admin
+                  .from("bookings")
+                  .update({
+                    group_level_notification_sent_at:
+                      groupLevelNotificationsSent > 0 ? new Date().toISOString() : null,
+                    group_level_notification_error: `Fallos ${failed.length}/${recipients.length}: ${failedPreview}`,
+                  })
+                  .eq("id", bookingId);
+              } else {
+                await admin
+                  .from("bookings")
+                  .update({
+                    group_level_notification_sent_at: new Date().toISOString(),
+                    group_level_notification_error: null,
+                  })
+                  .eq("id", bookingId);
+              }
+            }
+          }
+        }
+
+        if (groupLevelNotificationsSkipped) {
+          await admin
+            .from("bookings")
+            .update({
+              group_level_notification_sent_at: new Date().toISOString(),
+              group_level_notification_error: null,
+            })
+            .eq("id", bookingId);
+        }
+      } catch (notificationError) {
+        groupLevelNotificationsFailed++;
+        await admin
+          .from("bookings")
+          .update({
+            group_level_notification_error: notificationError instanceof Error ? notificationError.message : "Error desconocido",
+          })
+          .eq("id", bookingId);
+      }
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      confirmationSent: !confirmationAlreadySent,
+      confirmationAlreadySent,
+      groupLevelNotificationsSent,
+      groupLevelNotificationsFailed,
+      groupLevelNotificationsSkipped,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {

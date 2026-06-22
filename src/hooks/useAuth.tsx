@@ -89,7 +89,7 @@ const signUp = async (
   isMinor: boolean = false,
   phone: string = "",
   gender?: "hombre" | "mujer",
-  marketingEmailsEnabled: boolean = false
+  marketingEmailsEnabled: boolean = true
 ) => {
   const { error } = await supabase.auth.signUp({
     email,

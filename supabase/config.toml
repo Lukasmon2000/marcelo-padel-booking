@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.send-daily-summary]
 verify_jwt = false
+
+[functions.send-weekly-promo]
+verify_jwt = false

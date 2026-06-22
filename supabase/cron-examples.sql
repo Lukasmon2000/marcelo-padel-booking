@@ -22,6 +22,24 @@
 --   $$
 -- );
 
+-- Email semanal a todos los usuarios, lunes a las 09:00 hora de Madrid.
+-- Se programa cada hora del lunes para no fallar con cambios de hora.
+-- La funcion solo envia cuando en Madrid son las 09:00.
+-- select cron.schedule(
+--   'send-weekly-promo-monday-09-madrid',
+--   '0 * * * 1',
+--   $$
+--   select net.http_post(
+--     url := 'https://PROJECT_REF.supabase.co/functions/v1/send-weekly-promo',
+--     headers := jsonb_build_object(
+--       'Content-Type', 'application/json',
+--       'x-cron-secret', 'TU_CRON_SECRET'
+--     ),
+--     body := '{}'::jsonb
+--   );
+--   $$
+-- );
+
 -- Resumen diario a las 08:00.
 -- Ojo: pg_cron suele trabajar en UTC. Ajusta la hora si tu proyecto usa UTC.
 -- select cron.schedule(

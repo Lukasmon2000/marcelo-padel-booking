@@ -60,6 +60,8 @@ export type Database = {
           reminder_tomorrow_sent_at: string | null
           daily_summary_email_error: string | null
           daily_summary_sent_at: string | null
+          group_level_notification_error: string | null
+          group_level_notification_sent_at: string | null
           id: string
           level: Database["public"]["Enums"]["player_level"] | null
           monitor: string | null
@@ -81,6 +83,8 @@ export type Database = {
           reminder_tomorrow_sent_at?: string | null
           daily_summary_email_error?: string | null
           daily_summary_sent_at?: string | null
+          group_level_notification_error?: string | null
+          group_level_notification_sent_at?: string | null
           id?: string
           level?: Database["public"]["Enums"]["player_level"] | null
           monitor?: string | null
@@ -102,6 +106,8 @@ export type Database = {
           reminder_tomorrow_sent_at?: string | null
           daily_summary_email_error?: string | null
           daily_summary_sent_at?: string | null
+          group_level_notification_error?: string | null
+          group_level_notification_sent_at?: string | null
           id?: string
           level?: Database["public"]["Enums"]["player_level"] | null
           monitor?: string | null
@@ -193,6 +199,10 @@ export type Database = {
           id: string
           is_minor: boolean
           level: Database["public"]["Enums"]["player_level"]
+          marketing_emails_enabled: boolean
+          marketing_emails_enabled_at: string | null
+          marketing_emails_unsubscribed_at: string | null
+          marketing_unsubscribe_token: string
           phone: string | null
           updated_at: string
           user_id: string
@@ -205,6 +215,10 @@ export type Database = {
           id?: string
           is_minor?: boolean
           level?: Database["public"]["Enums"]["player_level"]
+          marketing_emails_enabled?: boolean
+          marketing_emails_enabled_at?: string | null
+          marketing_emails_unsubscribed_at?: string | null
+          marketing_unsubscribe_token?: string
           phone?: string | null
           updated_at?: string
           user_id: string
@@ -217,6 +231,10 @@ export type Database = {
           id?: string
           is_minor?: boolean
           level?: Database["public"]["Enums"]["player_level"]
+          marketing_emails_enabled?: boolean
+          marketing_emails_enabled_at?: string | null
+          marketing_emails_unsubscribed_at?: string | null
+          marketing_unsubscribe_token?: string
           phone?: string | null
           updated_at?: string
           user_id?: string
@@ -266,6 +284,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      weekly_promo_email_logs: {
+        Row: {
+          created_at: string
+          error: string | null
+          id: string
+          sent_at: string | null
+          user_id: string
+          week_start: string
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          id?: string
+          sent_at?: string | null
+          user_id: string
+          week_start: string
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          id?: string
+          sent_at?: string | null
+          user_id?: string
+          week_start?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {

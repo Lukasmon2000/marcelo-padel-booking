@@ -63,7 +63,7 @@ export function AuthForm() {
   const [isMinor, setIsMinor] = useState(false);
   const [phone, setPhone] = useState("");
   const [gender, setGender] = useState<"hombre" | "mujer" | "">("");
-  const [marketingEmailsEnabled, setMarketingEmailsEnabled] = useState(false);
+  const [marketingEmailsEnabled, setMarketingEmailsEnabled] = useState(true);
 
   const levels = Object.entries(LEVEL_LABELS) as [PlayerLevel, string][];
 

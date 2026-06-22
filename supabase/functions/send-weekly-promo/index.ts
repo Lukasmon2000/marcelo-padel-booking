@@ -12,8 +12,39 @@ function escapeHtml(value: unknown): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
+    .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function getMadridNowParts() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Madrid",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+
+  const year = Number(parts.find((p) => p.type === "year")?.value);
+  const month = Number(parts.find((p) => p.type === "month")?.value);
+  const day = Number(parts.find((p) => p.type === "day")?.value);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value);
+  const minute = Number(parts.find((p) => p.type === "minute")?.value);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return {
+    date: date.toISOString().slice(0, 10),
+    dayOfWeek: date.getUTCDay(),
+    hour,
+    minute,
+  };
+}
+
+function shouldSendNowMadrid(): boolean {
+  const madridNow = getMadridNowParts();
+  return madridNow.dayOfWeek === 1 && madridNow.hour === 9;
 }
 
 function getMadridWeekStart(): string {
@@ -90,8 +121,8 @@ async function sendBrevoEmail({
         </p>
 
         <p style="font-size: 13px; color: #6b7280; margin-top: 28px;">
-          Recibes este correo porque aceptaste recibir avisos y novedades de la escuela.
-          Si no quieres recibir más emails de este tipo,
+          Recibes este correo porque formas parte de la escuela.
+          Si no quieres recibir mas emails de este tipo,
           <a href="${unsubscribeUrl}" style="color: #047857;">puedes darte de baja aquí</a>.
         </p>
       </div>
@@ -108,7 +139,7 @@ Ya puedes revisar los horarios disponibles para apuntarte a clase esta semana.
 Reserva aquí:
 ${appUrl}
 
-Si no quieres recibir más emails de este tipo:
+Si no quieres recibir mas emails de este tipo:
 ${unsubscribeUrl}
   `;
 
@@ -215,6 +246,23 @@ serve(async (req) => {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const force = body?.force === true;
+
+    if (!force && !shouldSendNowMadrid()) {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          skipped: true,
+          reason: "outside_monday_09_madrid",
+          madridNow: getMadridNowParts(),
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     const weekStart = getMadridWeekStart();
